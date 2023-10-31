@@ -40,10 +40,10 @@
 			2. ```in ax 0x100``` (write to ax from 0x100)
 7. What's the difference between interrupt and function call.
 	1. Interrupts are invoked by hardware or peripheral. Function call is invoked by program.
-	2. The hardware and peripheral generate and send IRQ interrupt request) to cpu.
-	3. The CPU save the program counter and register data.
-	4. CPU uses IVT (interrupt Vector Table) to determine the address of ISR (Interrupt Service Request), and ISR perform the interrupt task.
-	5. After completing the ISR, the CPU restore the state from stack and resume the state.
+	2. The hardware and peripheral generate and send IRQ interrupt request) to CPU. The CPU switch to kernel modem, and disable the interrupt.
+	3. CPU uses IVT (interrupt Vector Table) to determine the address of ISR (Interrupt Service Request), ISR save the PC counter, register and the context of the task. These all happens in top half.
+	4. ISR invoked bottom half, and do the kernel thread stuff.
+	5. After completing the interrupt task, the CPU restore the state from stack and resume the state.
 8. Difference between SMT and CMT
 	1. SMT
 		1. multiple thread on 1 processor.
@@ -68,4 +68,48 @@
 		2. All CPU use 1 run queue.
 11. Please explain in CFS, why does higher priority task have shorter response time, and more CPU use time.
 	1. Higher priority task fills back to task queue more quickly. 
-12. 
+12. Peterson Solution:
+```
+P0: 
+flag[0] = true;
+turn = 1;
+while (flag[1] == true && turn == 1)
+{
+	// busy wait
+}
+// critical section
+...
+// end of critical section
+flag[0] = false;
+```
+
+```
+P1: 
+flag[1] = true;
+turn = 0;
+while (flag[0] == true && turn == 0)
+{
+	// busy wait
+}
+// critical section
+...
+// end of critical section
+flag[1] = false;
+```
+
+1. Mutual exclusion:
+	1. if P0 at critical section, ```flag[1]``` is ```false``` or ```turn == 0```
+	2. Which means P1 left critical section, or haven't enter the critical section.
+	3. If P0, P1 both want to enter, ```flag[0]==flag[1]==true```, swapping ```flag[i]=true``` and ```turn = j``` will failed! 
+2. Progress:
+	1. If P0 want to enter CS, P1 don't want to.
+		1. ```flag[1]==false```
+	2. If P0 want to enter CS, P1 want to enter but p1 only to execute to ```flag[1]==true;```
+		1. ```turn==1```
+	3. If P0 and P1 both want to enter CS
+		1. Same for mutex.
+3. Bounded waiting:
+	1. You have to prove the execute time is finite, not the run time.
+	2. If P0 keep wanting to entering CS, will it enter to CS?
+		1. If P0 first, P1 will be next.
+		2. ```turn = 1 ``` will guarantee P1 will enter the CS first.

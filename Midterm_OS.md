@@ -42,7 +42,7 @@
 	1. Interrupts are invoked by hardware or peripheral. Function call is invoked by program.
 	2. The hardware and peripheral generate and send IRQ interrupt request) to CPU. The CPU switch to kernel modem, and disable the interrupt.
 	3. CPU uses IVT (interrupt Vector Table) to determine the address of ISR (Interrupt Service Request), ISR save the PC counter, register and the context of the task. These all happens in top half.
-	4. ISR invoked bottom half, and do the kernel thread stuff.
+	4. ISR invoked bottom half, and execute the kernel thread stuff.
 	5. After completing the interrupt task, the CPU restore the state from stack and resume the state.
 8. Difference between SMT and CMT
 	1. SMT
@@ -64,10 +64,15 @@
 		2. If the task is I/O bound, it wouldn't complete at last epoch. the priority will get higher. (Exactly how it separate the I/O bound)
 	3. ```time_slice=time_slice/2 + basetimeslice(nice)```
 	4. cons: 
-		1. Calculate all goodness takes time
-		2. All CPU use 1 run queue.
+		1. Calculate all goodness takes time.
+		2. All CPU use 1 run queue, also when context switch it need to traverse all run queue to find the highest priority task.
 11. Please explain in CFS, why does higher priority task have shorter response time, and more CPU use time.
 	1. Higher priority task fills back to task queue more quickly. 
+	2. Compare to O(1) scheduler, you have to wait a epoch to refill the time slice.
+	3. Basically the shorter ```vruntime``` is, the shorter response time is. 
+		1. The basic idea: it runs a unit of time. (expected_time/num_task)
+		2. Pick a task that has smallest ```vruntime```, if same FIFO.
+		3. After execute a task, the ```vruntime``` is increased by 1/```proc_power```, 
 12. Peterson Solution:
 ```
 P0: 

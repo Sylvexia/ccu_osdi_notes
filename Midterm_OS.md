@@ -9,8 +9,8 @@
 		1. Context-switch: may trigger a lot of cache miss especially the context-switch between process.
 		2. Mode change: may only trigger CPU execute mode, smaller overhead.
 3. DMA and cache, coherency problem
-	1. From device to CPU, the hardware would make DMA update to cache.
-	2. From CPU to device, we write through from CPU to device. 
+	1. From peripheral to CPU, have to be sure the CPU read the latest data, can flush CPU cache.
+	2. From CPU to peripheral, have to be sure the DMA read the latest data, can write out the data to DRAM.
 4. How do DMA improve the CPU performance?
 	1. Say you want to copy a large chunk of file on disk, the disk access speed is slower than the bus and CPU, so DMA controller transfer the data to buffer to speed up the performance.
 	2. The CPU don't need to transfer the data manually, the CPU configure the DMA to manage the data movement, hence the CPU is free from transferring the data and can do other stuff.
@@ -38,13 +38,15 @@
 		4. Assembly: 
 			1. ```out 0x255 ax``` (write ax to 0x255)
 			2. ```in ax 0x100``` (write to ax from 0x100)
-7. What's the difference between interrupt and function call.
+7. Using the return to libc example to explain why do we need ASLR.
+	1. If we have no ASLR, ```system()``` will at the same address, by utilizing stack overflow to override the return address, and override the parameter system need, we can execute any command by return to libc.
+8. What's the difference between interrupt and function call.
 	1. Interrupts are invoked by hardware or peripheral. Function call is invoked by program.
 	2. The hardware and peripheral generate and send IRQ interrupt request) to CPU. The CPU switch to kernel modem, and disable the interrupt.
 	3. CPU uses IVT (interrupt Vector Table) to determine the address of ISR (Interrupt Service Request), ISR save the PC counter, register and the context of the task. These all happens in top half.
 	4. ISR invoked bottom half, and execute the kernel thread stuff.
 	5. After completing the interrupt task, the CPU restore the state from stack and resume the state.
-8. Difference between SMT and CMT
+9. Difference between SMT and CMT
 	1. SMT
 		1. multiple thread on 1 processor.
 		2. single core interleave the same instruction.
@@ -55,66 +57,75 @@
 		2. each core have its own set of instruction.
 		3. focus one overall processing power.
 		4. e.g. Oracle SPARC
-9. Why vDSO syscall is faster than conventional syscall
+10. Why vDSO syscall is faster than conventional syscall
 	1. vDSO syscall(e.g. ```_vdso_clock_gettime``` ) run in user space, which don't require context switch, which means lower cache missed, which improve the performance.
-10. In Linux 2.4 kernel, how to distinguish the I/O bounded task?
+11. Why thread is faster than process?
+	1. Thread has shared memory, the context switch has smaller cache miss.
+12. The difference between preemptive OS and preemptive kernel
+	1. Preemptive: If time quantum is complete or priority is not high enough, switch the we can switch as task immediately.
+	2. preemptive OS can do this in user mode, preemptive kernel can do this in kernel mode, too.
+13. In Linux 2.4 kernel, how to distinguish the I/O bounded task?
 	1. Separate the run time to several epoch. When no task can execute, switch to next epoch.
 	2. When switch to next epoch, increment all task time slice.
-		1. Higher time slice means higher dynamic priority in Linux.
-		2. If the task is I/O bound, it wouldn't complete at last epoch. the priority will get higher. (Exactly how it separate the I/O bound)
-	3. ```time_slice=time_slice/2 + basetimeslice(nice)```
-	4. cons: 
+		1. Higher time slice means higher dynamic priority in Linux. (or goodness)
+		2. How it separate from the I/O bound task is that after an epoch, the ```timeslice``` will remain not complete. ```time_slice=time_slice/2 + basetimeslice(nice)```, will add the last time_slice to make the priority higher.
+	3. Cons: 
 		1. Calculate all goodness takes time.
 		2. All CPU use 1 run queue, also when context switch it need to traverse all run queue to find the highest priority task.
-11. Please explain in CFS, why does higher priority task have shorter response time, and more CPU use time.
+14. How to set time quantum length in round-robin?
+	1. Make sure I/O bound task can invoke I/O in a time quantum.
+15. Please explain in CFS, why does higher priority task have shorter response time, and more CPU use time.
 	1. Higher priority task fills back to task queue more quickly. 
 	2. Compare to O(1) scheduler, you have to wait a epoch to refill the time slice.
 	3. Basically the shorter ```vruntime``` is, the shorter response time is. 
 		1. The basic idea: it runs a unit of time. (expected_time/num_task)
-		2. Pick a task that has smallest ```vruntime```, if same FIFO.
-		3. After execute a task, the ```vruntime``` is increased by 1/```proc_power```, 
-12. Peterson Solution:
-```
-P0: 
-flag[0] = true;
-turn = 1;
-while (flag[1] == true && turn == 1)
-{
-	// busy wait
-}
-// critical section
-...
-// end of critical section
-flag[0] = false;
-```
-
-```
-P1: 
-flag[1] = true;
-turn = 0;
-while (flag[0] == true && turn == 0)
-{
-	// busy wait
-}
-// critical section
-...
-// end of critical section
-flag[1] = false;
-```
-
-1. Mutual exclusion:
-	1. if P0 at critical section, ```flag[1]``` is ```false``` or ```turn == 0```
-	2. Which means P1 left critical section, or haven't enter the critical section.
-	3. If P0, P1 both want to enter, ```flag[0]==flag[1]==true```, swapping ```flag[i]=true``` and ```turn = j``` will failed! 
-2. Progress:
-	1. If P0 want to enter CS, P1 don't want to.
-		1. ```flag[1]==false```
-	2. If P0 want to enter CS, P1 want to enter but p1 only to execute to ```flag[1]==true;```
-		1. ```turn==1```
-	3. If P0 and P1 both want to enter CS
-		1. Same for mutex.
-3. Bounded waiting:
-	1. You have to prove the execute time is finite, not the run time.
-	2. If P0 keep wanting to entering CS, will it enter to CS?
-		1. If P0 first, P1 will be next.
-		2. ```turn = 1 ``` will guarantee P1 will enter the CS first.
+		2. Pick a task that has smallest ```vruntime```.
+		3. After execute a task, the ```vruntime``` is increased by 1/```proc_power```
+		4. Higher priority task increased by smaller ```vruntime```, it's quicker to be the smallest ```vruntime```, hence has better response time.
+16. If the system ```min_vruntime``` is 6450000, when a new task enter to OS, what should the new ```vruntime```?
+	1. Same as 6450000, you have to assume the task hasn't execute.
+17. Peterson Solution:
+	```
+	P0: 
+	flag[0] = true;
+	turn = 1;
+	while (flag[1] == true && turn == 1)
+	{
+		// busy wait
+	}
+	// critical section
+	...
+	// end of critical section
+	flag[0] = false;
+	```
+	
+	```
+	P1: 
+	flag[1] = true;
+	turn = 0;
+	while (flag[0] == true && turn == 0)
+	{
+		// busy wait
+	}
+	// critical section
+	...
+	// end of critical section
+	flag[1] = false;
+	```
+	
+	1. Mutual exclusion:
+		1. if P0 at critical section, ```flag[1]``` is ```false``` or ```turn == 0```
+		2. Which means P1 left critical section, or haven't enter the critical section.
+		3. If P0, P1 both want to enter, ```flag[0]==flag[1]==true```, swapping ```flag[i]=true``` and ```turn = j``` will failed! 
+	2. Progress:
+		1. If P0 want to enter CS, P1 don't want to.
+			1. ```flag[1]==false```
+		2. If P0 want to enter CS, P1 want to enter but p1 only to execute to ```flag[1]==true;```
+			1. ```turn==1```
+		3. If P0 and P1 both want to enter CS
+			1. Same for mutex.
+	3. Bounded waiting:
+		1. You have to prove the execute time is finite, not the run time.
+		2. If P0 keep wanting to entering CS, will it enter to CS?
+			1. If P0 first, P1 will be next.
+			2. ```turn = 1 ``` will guarantee P1 will enter the CS first.
